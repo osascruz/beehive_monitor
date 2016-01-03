@@ -101,6 +101,7 @@ void get_data(){
     }
     else{
       gotReading = 1;
+      Serial.println("Read data from DHT sensor");
     }
   }
 
@@ -118,6 +119,8 @@ void get_data(){
 }
 
 void processData(){
+  Serial.println(temperature);
+  Serial.println(humidity);
   Serial.println("process data"); 
 
   //add the results to the xively stream
