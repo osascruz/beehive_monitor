@@ -3,12 +3,11 @@
 
 //Importing various libraries
 
-#include <Sleep_n0m1.h>
+
 #include <CountingStream.h>
-#include <Xively.h>
-#include <XivelyClient.h>
-#include <XivelyDatastream.h>
-#include <XivelyFeed.h>
+#include <Adafruit_MQTT_Client.h>
+#include <Adafruit_MQTT.h>
+#include <Adafruit_SleepyDog.h>
 #include <b64.h>
 #include <HttpClient.h>
 #include <DHT.h>
@@ -21,37 +20,35 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
-float temperature = 0;
+float temp = 0;
 float humidity = 0;
-int wait = 225;
-boolean notConnected = true;
-unsigned long time;
-int mins;
-boolean working;
 
-//sleep stuff
-Sleep sleep;
-unsigned long sleepTime; //how long you wna the arduino to sleep
+//Adafruit IO Setup
 
-char myTempStream[] = "temperature"; //Set stream name (need to match Xively name)
-char myHumidityStream[] = "humidity"; //Set 2nd stream name
+#define AIO_SERVER "io.adafruit.com"
+#define AIO_SERVERPORT 1883
+#define AIO_USERNAME "petespeller"
+#define AIO_KEY "02964e15ff8269d41755cff6ff944c0c3753b536"
 
-XivelyDatastream datastreams[] = {
-  XivelyDatastream(myTempStream, strlen(myTempStream), DATASTREAM_FLOAT),
-  XivelyDatastream(myHumidityStream, strlen(myHumidityStream), DATASTREAM_FLOAT),
-};
+// Store the MQTT server, client ID, username, and password in flash memory.
+// This is required for using the Adafruit MQTT library.
+const char MQTT_SERVER[] PROGMEM = AIO_SERVER;
 
-#define FEED_ID 1234 //Set Xively Feed ID
-char xivelyKey[] = "1234"; //Set Xively API key
-
-XivelyFeed feed(FEED_ID, datastreams, 2); //Creating the feed, definining the two datastreams
-WiFiClient client;
-XivelyClient xivelyclient(client);
+// Set a unique MQTT client ID using the AIO key + the date and time the sketch
+// was compiled (so this should be unique across multiple devices for a user,
+// alternatively you can manually set this to a GUID or other random value).
+const char MQTT_CLIENTID[] PROGMEM  = __TIME__ AIO_USERNAME;
+const char MQTT_USERNAME[] PROGMEM  = AIO_USERNAME;
+const char MQTT_PASSWORD[] PROGMEM  = AIO_KEY;
 
 //connect to wifi
-char ssid[] = "name";     //  your network SSID (name) 
-char pass[] = "1234";    // your network password
+char ssid[] = "VM264773-2G";     //  your network SSID (name) 
+char pass[] = "gtypgcjt";    // your network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
+
+//Setup feed called 'temperature' for publishing changes
+const char TEMPERATURE_FEED[] PROGMEM = AIO_USERNAME "/feeds/temperature";
+Adafruit_MQTT_Publish temperature = Adafruit_MQTT_Publish(&mqtt, TEMPERATURE_FEED);
 
 void setup(void) {
   // dht sensor
@@ -74,73 +71,90 @@ void setup(void) {
   else {
     Serial.println("Connected to network");
   }
+  
+
 }
 
 void loop() {
-  if(working==false){
-    working = true;
-    Serial.print("allow the sensor to warm up");
-    delay(5000);
-    get_data();
+  
+  //Make sure to reset watchdog every loop iteration
+  Watchdog.reset();
+  
+  //ping adafruit io a few times to check we remain connected
+  if(! mqtt.ping(3)){
+    //reconnect to adafruit io
+    if(! mqtt.connected())
+      connect();
   }
-}
+  
+  // Wait a few seconds between measurements.
+  delay(2000);
 
-// Get the data from the DHT222 sensor
-void get_data(){
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+  // Read temperature as Fahrenheit (isFahrenheit = true)
+  float f = dht.readTemperature(true);
 
-  boolean gotReading = 0;
-
-  while (gotReading==0) {
-    humidity = dht.readHumidity();
-    temperature = dht.readTemperature();
-    // Check if any reads failed and exit early (to try again).
-    if (isnan(humidity) || isnan(temperature) ){
-      Serial.println("Failed to read from DHT sensor!");
-      delay(1000);
-    }
-    else{
-      gotReading = 1;
-      Serial.println("Read data from DHT sensor");
-    }
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t) || isnan(f)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
   }
 
-  // Compute heat index
-  // Must send in temp in Fahrenheit!
-  //float hi = dht.computeHeatIndex(f, h);
+  // Compute heat index in Fahrenheit (the default)
+  float hif = dht.computeHeatIndex(f, h);
+  // Compute heat index in Celsius (isFahreheit = false)
+  float hic = dht.computeHeatIndex(t, h, false);
 
-  Serial.print("Humidity: "); 
-  Serial.print(humidity);
+  Serial.print("Humidity: ");
+  Serial.print(h);
   Serial.print(" %\t");
-  Serial.print("Temperature: "); 
-  Serial.print(temperature);
+  Serial.print("Temperature: ");
+  Serial.print(t);
   Serial.print(" *C ");
-  processData();
+  Serial.print(f);
+  Serial.print(" *F\t");
+  Serial.print("Heat index: ");
+  Serial.print(hic);
+  Serial.print(" *C ");
+  Serial.print(hif);
+  Serial.println(" *F");  
+  
 }
 
-void processData(){
-  Serial.println(temperature);
-  Serial.println(humidity);
-  Serial.println("process data"); 
+// connect to adafruit io via MQTT
+void connect() {
 
-  //add the results to the xively stream
-  datastreams[0].setFloat(temperature); 
-  datastreams[1].setFloat(humidity);
-  //datastreams[2].setFloat(outputValue);
+  Serial.print(F("Connecting to Adafruit IO... "));
 
-  int ret = xivelyclient.put(feed, xivelyKey);  // Send to Xively
-  Serial.println("Ret: "); 
-  Serial.println(ret); 
+  int8_t ret;
 
-  if(ret == 200){
-    Serial.println(ret);      
-    delay(1000);
+  while ((ret = mqtt.connect()) != 0) {
+
+    switch (ret) {
+      case 1: Serial.println(F("Wrong protocol")); break;
+      case 2: Serial.println(F("ID rejected")); break;
+      case 3: Serial.println(F("Server unavail")); break;
+      case 4: Serial.println(F("Bad user/pass")); break;
+      case 5: Serial.println(F("Not authed")); break;
+      case 6: Serial.println(F("Failed to subscribe")); break;
+      default:
+        Serial.println(F("Connection failed"));
+        //CC3000connect(WLAN_SSID, WLAN_PASS, WLAN_SECURITY);
+        break;
+    }
+
+    if(ret >= 0)
+      mqtt.disconnect();
+
+    Serial.println(F("Retrying connection..."));
+    delay(5000);
+
   }
-  else{                                    
-    delay(1000);
-    Serial.println(ret);
-  } 
+
+  Serial.println(F("Adafruit IO Connected!"));
+
 }
-
-
