@@ -92,8 +92,8 @@ void get_data(){
   boolean gotReading = 0;
 
   while (gotReading==0) {
-    float humidity = dht.readHumidity();
-    float temperature = dht.readTemperature();
+    humidity = dht.readHumidity();
+    temperature = dht.readTemperature();
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature) ){
       Serial.println("Failed to read from DHT sensor!");
