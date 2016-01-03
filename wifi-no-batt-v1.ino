@@ -81,6 +81,7 @@ void loop() {
     working = true;
     Serial.print("allow the sensor to warm up");
     delay(5000);
+    get_data();
   }
 }
 
