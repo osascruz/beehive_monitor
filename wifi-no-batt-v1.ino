@@ -27,8 +27,8 @@ float humidity = 0;
 
 #define AIO_SERVER "io.adafruit.com"
 #define AIO_SERVERPORT 1883
-#define AIO_USERNAME "petespeller"
-#define AIO_KEY "02964e15ff8269d41755cff6ff944c0c3753b536"
+#define AIO_USERNAME "name"
+#define AIO_KEY "1234"
 
 // Store the MQTT server, client ID, username, and password in flash memory.
 // This is required for using the Adafruit MQTT library.
@@ -42,8 +42,8 @@ const char MQTT_USERNAME[] PROGMEM  = AIO_USERNAME;
 const char MQTT_PASSWORD[] PROGMEM  = AIO_KEY;
 
 //connect to wifi
-char ssid[] = "VM264773-2G";     //  your network SSID (name) 
-char pass[] = "gtypgcjt";    // your network password
+char ssid[] = "name";     //  your network SSID (name) 
+char pass[] = "1234";    // your network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 
 //Setup feed called 'temperature' for publishing changes
